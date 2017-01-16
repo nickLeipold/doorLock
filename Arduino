@@ -1,0 +1,201 @@
+//Created by theWhispererinc@gmail.com July 6th 2016
+
+#include <KeyDuino.h>
+#include <NdefMessage.h>
+#include <snep.h>
+#define sigWire 12
+
+KeyDuino keyDuino;
+SNEP nfcSnep(keyDuino);
+String timeStamp = "0";
+String doorNum = "3";
+
+
+
+void setup()
+{
+  pinMode(sigWire, OUTPUT); //signal wire for solenoid
+  pinMode(13, OUTPUT);
+  digitalWrite(sigWire, LOW);
+  Serial.begin(9600);
+
+}
+
+void loop()
+{
+
+
+  //if (readMsg() == 1) //if the read is correct connect to phone
+  {
+    if (initiateConnection() == 1)
+    {
+      if (readTimeStamp() == 1)
+      {
+        delay(800);
+        createNewStamp();
+        
+        
+        
+      } else {
+        Serial.println("didnt receive correct timestamp");
+      }
+    }
+  }
+  delay(1000);
+
+
+
+}
+
+void createNewStamp()
+{
+  int temp = random(0, 100);
+  String tempStr = String(temp);
+  tempStr += "nK";//append "nK" so the android program knows what to do with the message
+  Serial.println(temp);
+
+
+  uint8_t ndefBuf[128];
+  NdefMessage message = NdefMessage();
+  message.addMimeMediaRecord("security/door", tempStr); //door number
+  int messageSize = message.getEncodedSize();
+  if (messageSize > sizeof(ndefBuf))
+  {
+    Serial.println("buffer is too small");
+    exit(1);
+  }
+  message.encode(ndefBuf);
+  if (0 >= nfcSnep.write(ndefBuf, messageSize))
+  {
+
+    Serial.println("failed to send new Key");
+    
+    //delay(500);
+    //return 0;
+  }
+  else
+  {
+
+    /*//delay(800);
+    Serial.println("sent new key");
+    timeStamp = temp;
+    Serial.println("allowed to open door");
+    digitalWrite(sigWire, HIGH);
+    delay(3000);
+    digitalWrite(sigWire, LOW);
+    //return 1;
+    //delay(1000);*/
+  }
+  timeStamp = temp;
+    //Serial.println("allowed to open door");
+    digitalWrite(sigWire, HIGH);
+    delay(3000);
+    digitalWrite(sigWire, LOW);
+  
+  delay(500);
+
+
+}
+
+int readTimeStamp()
+{
+  uint8_t ndefBuf[128];
+  Serial.println("in readTimeStamp()");
+  //Serial.println(sizeof(ndefBuf));
+  int msgSize = (nfcSnep.read(ndefBuf, sizeof(ndefBuf)));// not getting a message
+  //Serial.println("message length" + nfcSnep.read(ndefBuf, sizeof(ndefBuf)));
+  if (msgSize > 0 ) ///*********need to print only the phone number
+  {
+    NdefMessage msg = NdefMessage(ndefBuf, msgSize);
+
+    //Serial.println(msg.getRecordCount());
+    Serial.println("message not empty");
+    if (msg.getRecordCount() == 1)
+    {
+      Serial.println("has one record");
+      msg.print();
+      Serial.println("reading the record");
+      NdefRecord record = msg.getRecord(0);
+
+      int payLoadLength = record.getPayloadLength();
+      byte payLoad[payLoadLength];
+      record.getPayload(payLoad);
+      String tempStr;
+      for (int i = 0; i < payLoadLength; i++)
+      {
+        tempStr += ((char)(payLoad[i]));
+      }
+      Serial.println(tempStr);
+
+      if ( record.getType() == "security/door" && tempStr == timeStamp )
+      {
+        Serial.println("type checking complete");
+        //delay(1000);
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+int initiateConnection()
+{
+  uint8_t ndefBuf[128];
+  Serial.println("in initiateConnecction");
+  NdefMessage message = NdefMessage();
+  message.addMimeMediaRecord("security/door", doorNum); //door number
+  int messageSize = message.getEncodedSize();
+  if (messageSize > sizeof(ndefBuf))
+  {
+    Serial.println("buffer is too small");
+    exit(1);
+  }
+  message.encode(ndefBuf);
+  if (0 >= nfcSnep.write(ndefBuf, messageSize))
+  {
+
+    Serial.println("failed to send message door");
+    delay(1000);
+    return 0;
+  }
+  else
+  {
+
+    Serial.println("working");
+    return 1;
+    //delay(1000);
+  }
+
+}
+
+int readMsg()
+{
+  uint8_t ndefBuf[128];
+
+  int msgSize = nfcSnep.read(ndefBuf, sizeof(ndefBuf));
+  if (msgSize > 0 ) ///*********need to print only the phone number
+  {
+    NdefMessage msg = NdefMessage(ndefBuf, msgSize);
+    if (msg.getRecordCount() == 1)
+    {
+      NdefRecord record = msg.getRecord(0);
+
+      int payLoadLength = record.getPayloadLength();
+      byte payLoad[payLoadLength];
+      record.getPayload(payLoad);
+
+      if (record.getTnf() == TNF_MIME_MEDIA && record.getType() == "security/door")
+      {
+        Serial.println("type checking complete");
+        return 1;
+      }
+
+
+    }
+
+  }
+  return 0;
+}
+
+
+
